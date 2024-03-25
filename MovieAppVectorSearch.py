@@ -1,6 +1,6 @@
 # Author: Abhijeet Behera
 # Date: 2024-03-12
-# Description: This is a demo of vector search using Mongo Atlas Vector search.
+# Description: Updated demo to show movie images in search results using MongoDB Atlas Vector search and Streamlit.
 import streamlit as st
 from pymongo import MongoClient
 from sentence_transformers import SentenceTransformer
@@ -13,7 +13,7 @@ model = SentenceTransformer('all-MiniLM-L6-v2')
 def vectorize_text(text):
     return model.encode(text).tolist()
 
-# Function to load sample data into MongoDB
+# Function to load or update sample data into MongoDB with 'poster_url'
 def load_sample_data(client):
     db = client['movie_database']
     collection = db['movies']
@@ -22,7 +22,6 @@ def load_sample_data(client):
     if collection.count_documents({}) == 0:
         
         with open('data/MovieSample.json', 'r') as sample_data:
-            # Sample movie data
             sample_movies = json.load(sample_data)
 
             # Vectorize descriptions and add to documents before inserting
@@ -31,10 +30,8 @@ def load_sample_data(client):
 
             collection.insert_many(sample_movies)
             st.success(f"Loaded {len(sample_movies)} sample movies into the database.")
-            return sample_movies
     else:
         st.info("Sample data already loaded.")
-        return list(collection.find({}, {'_id': 0, 'vector': 0}).limit(20))  # Return a few sample documents without the vector field
 
 # MongoDB connection and search functionality
 def search_movies(client, query_vector):
@@ -55,6 +52,7 @@ def search_movies(client, query_vector):
                 "title": 1,
                 "description": 1,
                 "genre": 1,
+                "poster_url": 1,  # Ensure to project 'poster_url'
                 "_id": 0,
                 "score": {"$meta": "vectorSearchScore"}
             }
@@ -76,10 +74,9 @@ def main():
             client.server_info()
             st.markdown("<span style='color:green'>Connected</span>", unsafe_allow_html=True)
 
-            # Load sample data and display in UI
-            sample_data = load_sample_data(client)
-            for movie in sample_data:
-                st.write(f"Title: {movie['title']}, Genre: {', '.join(movie['genre'])}")
+            # Load or update sample data
+            load_sample_data(client)
+
         except Exception as e:
             st.error(f"Failed to connect to MongoDB Atlas: {e}")
             return
@@ -91,19 +88,16 @@ def main():
             query_vector = vectorize_text(query)
             results = search_movies(client, query_vector)
 
-            # Filter the results in Python based on the score
-            # filtered_results = [result for result in results if result.get('score', 0) > 0.70]
-
-            # Check if filtered_results is empty
-            if results:  # This line was corrected
+            if results:
                 for result in results:
                     st.subheader(result['title'])
+                    st.image(result['poster_url'], width=200)  # Display movie poster
                     st.write(f"Description: {result['description']}")
                     st.write(f"Genres: {', '.join(result['genre'])}")
                     st.write(f"Search Score: {result.get('score', 'Not available')}")
                     st.markdown("---")
             else:
-                st.write("No movies found matching your search score criteria.")
+                st.write("No movies found matching your search criteria.")
     else:
         st.write("Please enter your MongoDB Atlas connection string to proceed.")
 
